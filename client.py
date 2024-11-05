@@ -88,8 +88,8 @@ class GameClient:
 
 async def main():
     # Use Railway URL when deployed, localhost for testing
-    SERVER_URL = "ws://localhost:8765"  # Change this to your Railway URL when deployed
-    
+    SERVER_URL = "wss://pythongame-production.up.railway.app:8765"  # Change this to your Railway URL when deployed
+    #SERVER_URL = "ws://localhost:8765"
     game = GameClient(SERVER_URL)
     await game.connect()
     await game.game_loop()
