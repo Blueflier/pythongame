@@ -1,79 +1,68 @@
-import socket
-import threading
+import asyncio
+import websockets
 import json
-import requests
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 class GameServer:
-    def __init__(self, host='0.0.0.0', port=5555):
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind((host, port))
-        self.server.listen()
+    def __init__(self):
+        self.clients = set()
+        self.game_state = {}  # Stores player positions and other game state
+
+    async def register(self, websocket):
+        client_id = id(websocket)
+        self.clients.add(websocket)
+        self.game_state[client_id] = {
+            "x": 100,
+            "y": 100,
+            "direction": 0
+        }
+        logging.info(f"New client connected. Total clients: {len(self.clients)}")
+        return client_id
+
+    async def unregister(self, websocket):
+        self.clients.remove(websocket)
+        client_id = id(websocket)
+        if client_id in self.game_state:
+            del self.game_state[client_id]
+        logging.info(f"Client disconnected. Total clients: {len(self.clients)}")
+
+    async def handle_message(self, websocket, message):
+        client_id = id(websocket)
+        data = json.loads(message)
         
-        self.clients = {}
-        self.positions = {}
+        # Update game state with received player data
+        if client_id in self.game_state:
+            self.game_state[client_id].update(data)
         
-        # Get and print IP addresses
-        print("\n=== Server Network Information ===")
-        
-        # Local IP (for same network players)
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-        print(f"Local IP (for same network): {local_ip}")
-        
-        # Alternative method to get local IP
-        try:
-            # This creates a temporary connection to get the correct local IP
-            temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            temp_sock.connect(("8.8.8.8", 80))
-            alternative_local_ip = temp_sock.getsockname()[0]
-            temp_sock.close()
-            if alternative_local_ip != local_ip:
-                print(f"Alternative Local IP: {alternative_local_ip}")
-        except:
-            pass
-        
-        # Public IP (for internet players, requires port forwarding)
-        try:
-            public_ip = requests.get('https://api.ipify.org').text
-            print(f"Public IP (requires port forwarding): {public_ip}")
-        except:
-            print("Couldn't get public IP address")
-        
-        print(f"Port: {port}")
-        print("\nPlayers on the same network should use the Local IP.")
-        print("Waiting for connections...\n")
-        
-    def handle_client(self, conn, addr):
-        player_id = addr[1]
-        self.positions[player_id] = {"x": 100, "y": 100}
-        
-        while True:
+        # Send updated game state to all clients
+        for client in self.clients:
             try:
-                data = conn.recv(1024).decode()
-                if not data:
-                    break
-                
-                data = json.loads(data)
-                self.positions[player_id] = data
-                
-                # Send all players' positions
-                conn.send(json.dumps(self.positions).encode())
-                
-            except:
-                break
-            
-        print(f"Client {addr} disconnected")
-        del self.positions[player_id]
-        conn.close()
-        
-    def start(self):
-        while True:
-            conn, addr = self.server.accept()
-            print(f"Connected to {addr}")
-            
-            thread = threading.Thread(target=self.handle_client, args=(conn, addr))
-            thread.start()
+                await client.send(json.dumps(self.game_state))
+            except websockets.ConnectionClosed:
+                pass
+
+    async def handle_client(self, websocket, path):
+        client_id = await self.register(websocket)
+        try:
+            async for message in websocket:
+                await self.handle_message(websocket, message)
+        except websockets.ConnectionClosed:
+            pass
+        finally:
+            await self.unregister(websocket)
+
+async def main():
+    game_server = GameServer()
+    async with websockets.serve(
+        game_server.handle_client,
+        host="0.0.0.0",
+        port=8765,
+        ping_interval=None
+    ):
+        logging.info("Server started on port 8765")
+        await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
-    server = GameServer()
-    server.start() 
+    asyncio.run(main()) 
