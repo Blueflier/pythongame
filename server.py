@@ -44,16 +44,21 @@ class GameServer:
                 pass
 
     async def handle_client(self, websocket, path):
-        client_id = await self.register(websocket)
+        logging.info(f"Connection attempt from {websocket.remote_address}")
         try:
+            client_id = await self.register(websocket)
+            logging.info(f"Client {client_id} successfully registered from {websocket.remote_address}")
             async for message in websocket:
+                logging.info(f"Received message from client {client_id}: {message[:100]}...")  # Log first 100 chars of message
                 await self.handle_message(websocket, message)
         except websockets.ConnectionClosed:
-            pass
+            logging.warning(f"Client connection closed unexpectedly: {websocket.remote_address}")
+        except Exception as e:
+            logging.error(f"Error handling client: {str(e)}")
         finally:
             await self.unregister(websocket)
 
-async def main():
+async def start_server():
     game_server = GameServer()
     async with websockets.serve(
         game_server.handle_client,
@@ -65,4 +70,4 @@ async def main():
         await asyncio.Future()  # run forever
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(start_server()) 

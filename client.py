@@ -22,11 +22,13 @@ class GameClient:
 
     async def connect(self):
         try:
+            print(f"Attempting to connect to {self.server_url}")
             self.websocket = await websockets.connect(self.server_url)
             print("Connected to server!")
             self.my_id = str(id(self.websocket))
         except Exception as e:
-            print(f"Failed to connect: {e}")
+            print(f"Failed to connect: {str(e)}")
+            print(f"Error type: {type(e)}")
             sys.exit(1)
 
     def handle_input(self):
